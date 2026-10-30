@@ -1,0 +1,17 @@
+@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">🛍️ RetailDesk</div>
+        <nav>
+            <NavLink href="" Match="NavLinkMatch.All">Dashboard</NavLink>
+            <NavLink href="products">Products & Inventory</NavLink>
+            <NavLink href="billing">New Bill / Checkout</NavLink>
+            <NavLink href="sales">Sales History</NavLink>
+        </nav>
+        <div class="sidebar-foot">Retail Store Billing<br /><small>Blazor + SQL Server</small></div>
+    </aside>
+    <main class="main-content">
+        @Body
+    </main>
+</div>

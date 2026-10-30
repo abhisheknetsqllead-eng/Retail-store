@@ -1,0 +1,55 @@
+@page "/"
+@rendermode InteractiveServer
+@inject ProductService Products
+@inject BillingService Billing
+
+<PageTitle>Dashboard | RetailDesk</PageTitle>
+<div class="page-heading">
+    <div><span class="eyebrow">OVERVIEW</span><h1>Store dashboard</h1><p class="muted">A quick look at your inventory and sales.</p></div>
+    <a class="btn btn-primary" href="billing">＋ Create new bill</a>
+</div>
+@if (loading)
+{
+    <p>Loading dashboard…</p>
+}
+else
+{
+    <div class="stats-grid">
+        <div class="stat-card"><span>Active products</span><strong>@productCount</strong><small>Products available for sale</small></div>
+        <div class="stat-card"><span>Low-stock items</span><strong>@lowStockCount</strong><small>Inventory at or below 5 units</small></div>
+        <div class="stat-card"><span>Recorded bills</span><strong>@sales.Count</strong><small>Saved transactions</small></div>
+        <div class="stat-card"><span>Sales total</span><strong>@sales.Sum(s => s.Total).ToString("C")</strong><small>Across recorded bills</small></div>
+    </div>
+    <section class="panel">
+        <div class="panel-heading"><div><h2>Recent bills</h2><p class="muted">Latest checkout transactions</p></div><a href="sales">View all →</a></div>
+        @if (!sales.Any())
+        {
+            <div class="empty-state">No sales yet. Create a bill to see it here.</div>
+        }
+        else
+        {
+            <div class="table-responsive"><table class="table align-middle">
+                <thead><tr><th>Bill #</th><th>Date</th><th>Customer</th><th>Payment</th><th class="text-end">Total</th></tr></thead>
+                <tbody>
+                @foreach (var sale in sales.Take(5))
+                {
+                    <tr><td><strong>#@sale.Id</strong></td><td>@sale.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")</td><td>@(sale.CustomerName ?? "Walk-in")</td><td>@sale.PaymentMethod</td><td class="text-end fw-bold">@sale.Total.ToString("C")</td></tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    </section>
+}
+@code {
+    private bool loading = true;
+    private int productCount, lowStockCount;
+    private List<Sale> sales = [];
+    protected override async Task OnInitializedAsync()
+    {
+        var products = await Products.GetAllAsync();
+        sales = await Billing.GetSalesAsync();
+        productCount = products.Count(p => p.IsActive);
+        lowStockCount = products.Count(p => p.IsActive && p.StockQuantity <= 5);
+        loading = false;
+    }
+}

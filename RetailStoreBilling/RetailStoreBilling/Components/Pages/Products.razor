@@ -1,0 +1,101 @@
+@page "/products"
+@rendermode InteractiveServer
+@inject ProductService ProductService
+
+<PageTitle>Products & Inventory | RetailDesk</PageTitle>
+<div class="page-heading">
+    <div><span class="eyebrow">CATALOG</span><h1>Products & inventory</h1><p class="muted">Create, view, update, and delete store products.</p></div>
+    <button class="btn btn-primary" @onclick="NewProduct">＋ Add product</button>
+</div>
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="alert alert-info">@message</div> }
+<div class="panel">
+    <div class="toolbar">
+        <input class="form-control search-input" placeholder="Search product name or SKU…" @bind="search" @bind:event="oninput" />
+        <button class="btn btn-outline-secondary" @onclick="Load">Search</button>
+    </div>
+    @if (editing)
+    {
+        <div class="edit-card">
+            <h2>@(model.Id == 0 ? "Add product" : "Edit product")</h2>
+            <EditForm Model="model" OnValidSubmit="Save">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <div class="form-grid">
+                    <label>Product name <InputText class="form-control" @bind-Value="model.Name" /></label>
+                    <label>SKU <InputText class="form-control" @bind-Value="model.Sku" /></label>
+                    <label>Unit price <InputNumber class="form-control" @bind-Value="model.Price" step="0.01" /></label>
+                    <label>Stock quantity <InputNumber class="form-control" @bind-Value="model.StockQuantity" /></label>
+                    <label class="checkbox-label"><InputCheckbox @bind-Value="model.IsActive" /> Active / available for checkout</label>
+                </div>
+                <div class="form-actions"><button class="btn btn-primary" type="submit">Save product</button><button class="btn btn-light" type="button" @onclick="Cancel">Cancel</button></div>
+            </EditForm>
+        </div>
+    }
+    <div class="table-responsive"><table class="table align-middle">
+        <thead><tr><th>Product</th><th>SKU</th><th>Unit price</th><th>In stock</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+        <tbody>
+        @foreach (var p in products)
+        {
+            <tr>
+                <td><strong>@p.Name</strong></td><td>@p.Sku</td><td>@p.Price.ToString("C")</td>
+                <td><span class="stock @(p.StockQuantity <= 5 ? "stock-low" : "")">@p.StockQuantity</span></td>
+                <td><span class="badge @(p.IsActive ? "text-bg-success" : "text-bg-secondary")">@(p.IsActive ? "Active" : "Inactive")</span></td>
+                <td class="text-end action-cell"><button class="btn btn-sm btn-outline-primary" @onclick="() => Edit(p)">Edit</button><button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(p)">Delete</button></td>
+            </tr>
+        }
+        </tbody>
+    </table></div>
+    @if (!products.Any()) { <div class="empty-state">No products found. Add your first product.</div> }
+</div>
+
+@code {
+    private List<Product> products = [];
+    private Product model = new();
+    private string search = "";
+    private string? message;
+    private bool editing;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load() => products = await ProductService.GetAllAsync(search);
+
+    private void NewProduct()
+    {
+        model = new Product { IsActive = true };
+        editing = true;
+        message = null;
+    }
+
+    private void Edit(Product p)
+    {
+        model = new Product { Id = p.Id, Name = p.Name, Sku = p.Sku, Price = p.Price, StockQuantity = p.StockQuantity, IsActive = p.IsActive };
+        editing = true;
+        message = null;
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            await ProductService.SaveAsync(model);
+            editing = false;
+            message = "Product saved successfully.";
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            message = ex.InnerException?.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase) == true
+                ? "That SKU already exists. Use a unique SKU."
+                : $"Could not save product: {ex.GetBaseException().Message}";
+        }
+    }
+
+    private void Cancel() => editing = false;
+
+    private async Task Delete(Product p)
+    {
+        var deleted = await ProductService.DeleteAsync(p.Id);
+        message = deleted ? $"Deleted {p.Name}." : "This product is referenced by a bill and cannot be deleted. Mark it inactive instead.";
+        await Load();
+    }
+}

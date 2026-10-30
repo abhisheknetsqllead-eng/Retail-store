@@ -1,0 +1,110 @@
+@page "/billing"
+@rendermode InteractiveServer
+@inject ProductService ProductService
+@inject BillingService Billing
+
+<PageTitle>New Bill | RetailDesk</PageTitle>
+<div class="page-heading">
+    <div><span class="eyebrow">CHECKOUT</span><h1>Create a bill</h1><p class="muted">Add products, confirm quantities, and record payment.</p></div>
+    <a class="btn btn-light" href="sales">Sales history →</a>
+</div>
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(error ? "alert-danger" : "alert-success")">@message</div> }
+<div class="checkout-grid">
+    <section class="panel">
+        <h2>1. Add items</h2>
+        <label class="field-label">Find product</label>
+        <input class="form-control mb-3" placeholder="Type a name or SKU…" @bind="search" @bind:event="oninput" />
+        <div class="product-picker">
+        @foreach (var p in availableProducts.Where(p => string.IsNullOrWhiteSpace(search) || p.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || p.Sku.Contains(search, StringComparison.OrdinalIgnoreCase)))
+        {
+            <div class="picker-row">
+                <div><strong>@p.Name</strong><small>@p.Sku · @p.StockQuantity in stock</small></div>
+                <div class="picker-price">@p.Price.ToString("C")</div>
+                <button class="btn btn-sm btn-outline-primary" disabled="@(p.StockQuantity < 1)" @onclick="() => Add(p)">Add</button>
+            </div>
+        }
+        </div>
+    </section>
+    <section class="panel">
+        <h2>2. Bill details</h2>
+        <label class="field-label">Customer name (optional)</label>
+        <input class="form-control mb-3" @bind="customerName" placeholder="Walk-in customer" />
+        <label class="field-label">Payment method</label>
+        <select class="form-select mb-3" @bind="paymentMethod"><option>Cash</option><option>Credit Card</option><option>Debit Card</option><option>Mobile Payment</option><option>Other</option></select>
+        <label class="field-label">Tax rate (%)</label>
+        <input class="form-control mb-3" type="number" min="0" max="100" step="0.01" @bind="taxRate" />
+        <div class="cart-lines">
+            @if (cart.Count == 0) { <div class="empty-state">Your bill is empty. Add products from the left.</div> }
+            @foreach (var line in cart)
+            {
+                var product = availableProducts.FirstOrDefault(p => p.Id == line.ProductId);
+                if (product is not null)
+                {
+                    <div class="cart-row">
+                        <div class="cart-name"><strong>@product.Name</strong><small>@product.Price.ToString("C") each</small></div>
+                        <input class="form-control qty-input" type="number" min="1" max="@Math.Max(1, product.StockQuantity)" @bind="line.Quantity" />
+                        <strong>@(product.Price * line.Quantity).ToString("C")</strong>
+                        <button class="btn btn-sm btn-light" title="Remove" @onclick="() => Remove(line.ProductId)">✕</button>
+                    </div>
+                }
+            }
+        </div>
+        <div class="totals">
+            <div><span>Subtotal</span><strong>@Subtotal.ToString("C")</strong></div>
+            <div><span>Tax (@taxRate%)</span><strong>@TaxAmount.ToString("C")</strong></div>
+            <div class="grand-total"><span>Total due</span><strong>@Total.ToString("C")</strong></div>
+        </div>
+        <button class="btn btn-primary w-100 mt-3" disabled="@(cart.Count == 0)" @onclick="CompleteSale">Complete sale & save bill</button>
+    </section>
+</div>
+
+@code {
+    private List<Product> availableProducts = [];
+    private List<CartEntry> cart = [];
+    private string search = "";
+    private string? customerName;
+    private string paymentMethod = "Cash";
+    private decimal taxRate = 0;
+    private string? message;
+    private bool error;
+
+    private decimal Subtotal => cart.Sum(line => (availableProducts.FirstOrDefault(p => p.Id == line.ProductId)?.Price ?? 0) * line.Quantity);
+    private decimal TaxAmount => Math.Round(Subtotal * taxRate / 100m, 2, MidpointRounding.AwayFromZero);
+    private decimal Total => Subtotal + TaxAmount;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload() => availableProducts = (await ProductService.GetAllAsync()).Where(p => p.IsActive).ToList();
+
+    private void Add(Product p)
+    {
+        var line = cart.FirstOrDefault(c => c.ProductId == p.Id);
+        if (line is null) cart.Add(new CartEntry { ProductId = p.Id, Quantity = 1 });
+        else if (line.Quantity < p.StockQuantity) line.Quantity++;
+    }
+
+    private void Remove(int id) => cart.RemoveAll(c => c.ProductId == id);
+
+    private async Task CompleteSale()
+    {
+        try
+        {
+            var sale = await Billing.CreateSaleAsync(customerName, paymentMethod, taxRate,
+                cart.Select(c => new CartLine(c.ProductId, c.Quantity)).ToList());
+            message = $"Bill #{sale.Id} saved successfully. Total: {sale.Total:C}.";
+            error = false;
+            cart.Clear();
+            customerName = null;
+            search = "";
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            message = ex.GetBaseException().Message;
+            error = true;
+            await Reload();
+        }
+    }
+
+    private sealed class CartEntry { public int ProductId { get; set; } public int Quantity { get; set; } }
+}

@@ -1,0 +1,45 @@
+@page "/sales"
+@rendermode InteractiveServer
+@inject BillingService Billing
+
+<PageTitle>Sales History | RetailDesk</PageTitle>
+<div class="page-heading">
+    <div><span class="eyebrow">TRANSACTIONS</span><h1>Sales history</h1><p class="muted">Review saved bills or void a sale to restore inventory.</p></div>
+    <a class="btn btn-primary" href="billing">＋ New bill</a>
+</div>
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="alert alert-info">@message</div> }
+<div class="panel">
+    @if (!sales.Any())
+    {
+        <div class="empty-state">No bills have been recorded yet.</div>
+    }
+    else
+    {
+        <div class="table-responsive"><table class="table align-middle">
+            <thead><tr><th>Bill #</th><th>Date</th><th>Customer</th><th>Items</th><th>Payment</th><th class="text-end">Subtotal</th><th class="text-end">Tax</th><th class="text-end">Total</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var s in sales)
+            {
+                <tr>
+                    <td><strong>#@s.Id</strong></td><td>@s.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")</td>
+                    <td>@(s.CustomerName ?? "Walk-in")</td><td>@s.Items.Sum(i => i.Quantity)</td><td>@s.PaymentMethod</td>
+                    <td class="text-end">@s.Subtotal.ToString("C")</td><td class="text-end">@s.TaxAmount.ToString("C")</td><td class="text-end fw-bold">@s.Total.ToString("C")</td>
+                    <td class="text-end"><button class="btn btn-sm btn-outline-danger" @onclick="() => VoidSale(s)">Void</button></td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+@code {
+    private List<Sale> sales = [];
+    private string? message;
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load() => sales = await Billing.GetSalesAsync();
+    private async Task VoidSale(Sale sale)
+    {
+        var ok = await Billing.DeleteSaleAsync(sale.Id);
+        message = ok ? $"Bill #{sale.Id} voided and inventory restored." : "Bill not found.";
+        await Load();
+    }
+}
